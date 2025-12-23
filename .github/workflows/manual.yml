@@ -4,83 +4,189 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
     permissions:
-      actions: write
-      checks: write
       contents: write
-      deployments: write
-      issues: write
-      packages: write
-      pages: write
-      pull-requests: write
-      repository-projects: write
-      security-events: write
-      statuses: write
+
+    outputs:
+      version: ${{ steps.check_version.outputs.version }}
 
     steps:
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.13
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Check Version
-      id: check_version
-      shell: pwsh
-      run: |
-        $version = Get-Content -Path version.txt
-        echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - name: Check Version
+        id: check_version
+        shell: pwsh
+        run: |
+          $version = Get-Content -Path version.txt
+          echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-    - name: Install Requirements
-      shell: cmd
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install --upgrade setuptools
-        python -m pip install pyinstaller
-        python -m pip install -U -r requirements.txt
-        python -m pip cache purge
+      - name: Install Requirements
+        shell: cmd
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade setuptools
+          python -m pip install pyinstaller
+          python -m pip install -U -r requirements.txt
+          python -m pip cache purge
 
-    - name: Build EXE
-      shell: cmd
-      run: |
-        python .\resource\pyinstaller.py
+      - name: Build EXE
+        shell: cmd
+        run: |
+          python .\resource\pyinstaller.py
 
-    - name: Copy Files
-      shell: cmd
-      run: |
-        xcopy ".\version.txt" ".\dist\LinguaGacha\" /Q /Y
-        xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
-        xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
+      - name: Copy Files
+        shell: cmd
+        run: |
+          xcopy ".\version.txt" ".\dist\LinguaGacha\" /Q /Y
+          xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
+          del /Q /F ".\dist\LinguaGacha\resource\7za.exe"
+          del /Q /F ".\dist\LinguaGacha\resource\pyinstaller.py"
 
-        del /Q /F ".\dist\LinguaGacha\resource\7za.exe"
-        del /Q /F ".\dist\LinguaGacha\resource\pyinstaller.py"
+      - name: Compress Archive
+        shell: cmd
+        run: |
+          .\resource\7za.exe a -y -bt -mx5 LinguaGacha_${{ steps.check_version.outputs.version }}.zip .\dist\*
 
-    - name: Compress Archive
-      shell: cmd
-      run: |
-        .\resource\7za.exe a -y -bt -mx5 LinguaGacha_${{ steps.check_version.outputs.version }}.zip .\dist\*
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LinguaGacha_${{ steps.check_version.outputs.version }}_Windows
+          path: LinguaGacha_${{ steps.check_version.outputs.version }}.zip
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: MANUAL_BUILD_${{ steps.check_version.outputs.version }}
-        release_name: LinguaGacha_${{ steps.check_version.outputs.version }}
-        draft: true
-        prerelease: false
+  build-macos:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-13
+            arch: x86_64
+          - runner: macos-14
+            arch: arm64
 
-    - name: Upload Release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./LinguaGacha_${{ steps.check_version.outputs.version }}.zip
-        asset_name: LinguaGacha_${{ steps.check_version.outputs.version }}.zip
-        asset_content_type: application/zip
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check Version
+        id: check_version
+        run: |
+          version=$(cat version.txt)
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Install Requirements
+        run: |
+          python -m pip install --upgrade pip setuptools
+          python -m pip install pyinstaller
+          python -m pip install -U -r requirements.txt
+          python -m pip cache purge
+
+      - name: Build App Bundle
+        run: |
+          python ./resource/pyinstaller.py
+
+      - name: Copy Resources
+        run: |
+          cp version.txt ./dist/LinguaGacha.app/Contents/MacOS/
+          cp -r resource ./dist/LinguaGacha.app/Contents/MacOS/
+          rm -f ./dist/LinguaGacha.app/Contents/MacOS/resource/7za.exe
+          rm -f ./dist/LinguaGacha.app/Contents/MacOS/resource/pyinstaller.py
+
+      - name: Install create-dmg
+        run: |
+          brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "LinguaGacha" \
+            --volicon "./resource/icon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "LinguaGacha.app" 150 190 \
+            --hide-extension "LinguaGacha.app" \
+            --app-drop-link 450 185 \
+            "LinguaGacha_${{ steps.check_version.outputs.version }}_macOS_${{ matrix.arch }}.dmg" \
+            "./dist/LinguaGacha.app" || true
+          # create-dmg returns non-zero even on success, so we check if DMG exists
+          ls -la *.dmg
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LinguaGacha_${{ steps.check_version.outputs.version }}_macOS_${{ matrix.arch }}
+          path: "*.dmg"
+
+  create-release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: List Artifacts
+        run: |
+          find artifacts -type f
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: MANUAL_BUILD_${{ needs.build-windows.outputs.version }}
+          release_name: LinguaGacha_${{ needs.build-windows.outputs.version }}
+          draft: true
+          prerelease: false
+
+      - name: Upload Windows Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_Windows/LinguaGacha_${{ needs.build-windows.outputs.version }}.zip
+          asset_name: LinguaGacha_${{ needs.build-windows.outputs.version }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload macOS x86_64 Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64.dmg
+          asset_name: LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64.dmg
+          asset_content_type: application/x-apple-diskimage
+
+      - name: Upload macOS arm64 Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64.dmg
+          asset_name: LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64.dmg
+          asset_content_type: application/x-apple-diskimage
