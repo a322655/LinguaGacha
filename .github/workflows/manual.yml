@@ -150,43 +150,14 @@ jobs:
         run: |
           find artifacts -type f
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: MANUAL_BUILD_${{ needs.build-windows.outputs.version }}
-          release_name: LinguaGacha_${{ needs.build-windows.outputs.version }}
+          name: LinguaGacha_${{ needs.build-windows.outputs.version }}
           draft: true
           prerelease: false
-
-      - name: Upload Windows Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_Windows/LinguaGacha_${{ needs.build-windows.outputs.version }}.zip
-          asset_name: LinguaGacha_${{ needs.build-windows.outputs.version }}.zip
-          asset_content_type: application/zip
-
-      - name: Upload macOS x86_64 Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64.dmg
-          asset_name: LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64.dmg
-          asset_content_type: application/x-apple-diskimage
-
-      - name: Upload macOS arm64 Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64.dmg
-          asset_name: LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64.dmg
-          asset_content_type: application/x-apple-diskimage
+          files: |
+            ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_Windows/LinguaGacha_${{ needs.build-windows.outputs.version }}.zip
+            ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64.dmg
+            ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64.dmg
